@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import os
 from glob import glob
 
@@ -23,8 +24,26 @@ df_raw['Time_Bin'] = df_raw_combined['tpep_pickup_datetime'].dt.floor(BIN_SIZE)
 #calculate demand (active requests)
 #demand is defined by trips originating in a zone 
 
-demand_df = (df_raw_combined.groupby(['Time_Bin', 'PULocationID']).size().rename('ActiveRequests').reset_index())
+demand_df = (df_raw_combined.groupby(['Time_Bin', 'PULocationID'])
+             .size().rename('ActiveRequests').reset_index())
 
 #Calculate supply Proxy (Available Drivers arriving)
 #supply is proxied by the flow of drivers arriving at a zone (Dropoff Location)
-supply_df = (df_raw_combined.groupby(['Time_Bin', 'DOLocationID']).size().rename('AvailableDriversProxy').reset_index())
+supply_df = (df_raw_combined.groupby(['Time_Bin', 'DOLocationID'])
+             .size().rename('AvailableDriversProxy').reset_index())
+
+#use a full outer merge to ensure we capture all zone-time comninations 
+df_appregate = pd.merge(
+        demand_df,
+        supply_df,
+        on=['Time_Bin','PULocationID'],
+        how='outer'
+    )
+
+#clean and calculate the surge proxy (demand excess ratio)
+#fill Nan Values with 0
+df_appregate['SupplyElasticity'] = np.divide(
+        df_appregate['AvailableDriversProxy'],
+        df_appregate['ActiveRequests'],
+        out=np.zeros_like(df_appregate['ActiveRequests'], dtype=float), #this handles division by 0
+        where=df_appregate['ActiveRequests'] != 0) #make sure denominator is not 0
