@@ -1,0 +1,2 @@
+#ignore all parquet data files - millions of lines long
+*.parquet
