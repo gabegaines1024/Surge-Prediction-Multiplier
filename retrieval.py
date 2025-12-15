@@ -60,3 +60,7 @@ df_appregate['DER_t'] = np.divide(
         df_appregate['AvailableDriversProxy'],
         out=np.full_like(df_appregate['ActiveRequests'], fill_value=1, dtype=float), #default to 1
         where=df_appregate['AvailableDriversProxy'] != 0)
+
+#rename the geographic zone column for clearity
+df_appregate = df_appregate.rename(columns={'PULocationID': 'Zone'})
+
