@@ -32,6 +32,8 @@ demand_df = (df_raw_combined.groupby(['Time_Bin', 'PULocationID'])
 supply_df = (df_raw_combined.groupby(['Time_Bin', 'DOLocationID'])
              .size().rename('AvailableDriversProxy').reset_index())
 
+supply_df = supply_df.rename(columns={'DOLocationID': 'PULocationID'})
+
 #use a full outer merge to ensure we capture all zone-time comninations 
 df_appregate = pd.merge(
         demand_df,
@@ -41,9 +43,20 @@ df_appregate = pd.merge(
     )
 
 #clean and calculate the surge proxy (demand excess ratio)
-#fill Nan Values with 0
+#fill NaN Values with 0
+
+df_aggregate[['ActiveRequests', 'AvailableDriversProxy']] = df_aggregate[
+        ['ActiveRequests', 'AvailableDriversProxy']].fillna(0)
+
 df_appregate['SupplyElasticity'] = np.divide(
         df_appregate['AvailableDriversProxy'],
         df_appregate['ActiveRequests'],
         out=np.zeros_like(df_appregate['ActiveRequests'], dtype=float), #this handles division by 0
         where=df_appregate['ActiveRequests'] != 0) #make sure denominator is not 0
+
+#target variable y for prediction: Demand Excess Ratio
+df_appregate['DER_t'] = np.divide(
+        df_appregate['ActiveRequests'],
+        df_appregate['AvailableDriversProxy'],
+        out=np.full_like(df_appregate['ActiveRequests'], fill_value=1, dtype=float), #default to 1
+        where=df_appregate['AvailableDriversProxy'] != 0)
