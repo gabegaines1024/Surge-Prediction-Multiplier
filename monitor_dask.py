@@ -35,12 +35,23 @@ def check_processed_files():
     }
     
     if os.path.exists(output_dir):
-        for filename in files.keys():
+        # Use list() to create a copy of keys to avoid modifying dict during iteration
+        for filename in list(files.keys()):
             filepath = os.path.join(output_dir, filename)
             if os.path.exists(filepath):
                 files[filename] = True
-                size_mb = os.path.getsize(filepath) / (1024 ** 2)
-                files[f"{filename}_size"] = f"{size_mb:.2f} MB"
+                try:
+                    # Handle both file and directory (partitioned parquet)
+                    if os.path.isdir(filepath):
+                        size_mb = sum(
+                            os.path.getsize(os.path.join(filepath, f)) 
+                            for f in os.listdir(filepath) if f.endswith('.parquet')
+                        ) / (1024 ** 2)
+                    else:
+                        size_mb = os.path.getsize(filepath) / (1024 ** 2)
+                    files[f"{filename}_size"] = f"{size_mb:.2f} MB"
+                except OSError:
+                    files[f"{filename}_size"] = "? MB"
     
     return files
 

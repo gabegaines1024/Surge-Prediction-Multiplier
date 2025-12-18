@@ -21,13 +21,18 @@ def fetch_nyc_weather(start_date, end_date):
     
     # Process hourly data
     hourly = res.Hourly()
+    temp_data = hourly.Variables(0).ValuesAsNumpy()
+    precip_data = hourly.Variables(1).ValuesAsNumpy()
+    
+    # Create date range matching the data length
     data = {
         "Time_Bin": pd.date_range(
             start=pd.to_datetime(hourly.Time(), unit="s"),
-            periods=hourly.Interval(), freq="1H"
+            end=pd.to_datetime(hourly.TimeEnd(), unit="s"),
+            periods=len(temp_data)
         ),
-        "temp": hourly.Variables(0).ValuesAsNumpy(),
-        "precip": hourly.Variables(1).ValuesAsNumpy()
+        "temp": temp_data,
+        "precip": precip_data
     }
     
     df_weather = pd.DataFrame(data)
