@@ -1,5 +1,7 @@
 #ignore all parquet data files - millions of lines long
 *.parquet
 
+.venv
+
 # Use this command for every large file you want to untrack
 git rm --cached <file_name>.parquet
