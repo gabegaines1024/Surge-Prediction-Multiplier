@@ -1,16 +1,17 @@
-fastparquet
-# Dask and parallel computing dependencies
-dask[complete]==2024.1.0
-distributed==2024.1.0
-
 # Data processing
 pandas>=2.0.0
 numpy>=1.24.0
 pyarrow>=14.0.0
+fastparquet>=2024.11.0
+
+# Dask for large data processing
+dask[complete]>=2024.1.0
+distributed>=2024.1.0
+
+# Weather API (for weather_service.py)
+requests-cache>=1.0.0
+retry-requests>=2.0.0
+openmeteo-requests>=1.0.0
 
 # Progress visualization
 tqdm>=4.65.0
-
-# Optional: for distributed computing across multiple machines
-# dask-jobqueue==0.8.2  # For HPC clusters
-# dask-kubernetes==2024.1.0  # For Kubernetes deployments
