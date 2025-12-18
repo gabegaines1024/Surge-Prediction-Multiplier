@@ -15,14 +15,19 @@ def train_surge_model(X_train, y_train, X_test, y_test):
         n_estimators=100,
         learning_rate=0.1,
         max_depth=6,
-        objective='reg:squarederror'
+        objective='reg:squarederror',
+        random_state=42
     )
     
+    print(f"Training on {len(X_train):,} samples...")
     model.fit(X_train, y_train)
     
     # Predict and Evaluate
     preds = model.predict(X_test)
     mae = mean_absolute_error(y_test, preds)
     
-    print(f"Model Training Complete. MAE: {mae:.4f}")
+    print(f"✓ Model Training Complete!")
+    print(f"  MAE: {mae:.4f}")
+    print(f"  Features: {list(X_train.columns)}")
+    
     return model
