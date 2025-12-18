@@ -18,34 +18,68 @@ DATA_DIR = './taxi data/'
 OUTPUT_DIR = './processed_data/'  # Where we'll save processed chunks
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-file_paths = glob(os.path.join(DATA_DIR, '*.parquet'))
+# Separate file paths by type (they have different column schemas!)
+yellow_files = glob(os.path.join(DATA_DIR, 'yellow_tripdata_*.parquet'))
+fhvhv_files = glob(os.path.join(DATA_DIR, 'fhvhv_tripdata_*.parquet'))
 
-print(f"Found {len(file_paths)} parquet files to process.")
+print(f"Found {len(yellow_files)} yellow taxi files")
+print(f"Found {len(fhvhv_files)} FHVHV (Uber/Lyft) files")
 print("=" * 60)
 print("DASK MODE: Loading data lazily (no memory consumed yet)...")
 print("=" * 60)
 
-# CRITICAL: Read with Dask - this is LAZY, no data loaded into RAM yet!
-# Dask will automatically partition your data into ~100MB chunks
-df_raw_combined = dd.read_parquet(
-    os.path.join(DATA_DIR, '*.parquet'),
-    engine='pyarrow',
-    # Specify datetime columns for proper parsing
-    parse_dates=['tpep_pickup_datetime', 'tpep_dropoff_datetime']
-)
+# Function to standardize column names across different taxi data formats
+def standardize_columns(df, source_type):
+    """Rename columns to standard names and select only needed columns."""
+    if source_type == 'yellow':
+        # Yellow taxi columns
+        df = df.rename(columns={
+            'tpep_pickup_datetime': 'pickup_datetime',
+            'tpep_dropoff_datetime': 'dropoff_datetime'
+        })
+    # FHVHV already uses 'pickup_datetime' and 'dropoff_datetime'
+    
+    # Select only the columns we need (common to both)
+    required_cols = ['pickup_datetime', 'dropoff_datetime', 'PULocationID', 'DOLocationID']
+    return df[required_cols]
 
-print(f"Dask DataFrame created with {df_raw_combined.npartitions} partitions")
-print(f"Estimated rows per partition: {len(df_raw_combined) / df_raw_combined.npartitions:.0f}")
+# Load and standardize each data source
+dfs = []
+
+if yellow_files:
+    print("Loading yellow taxi data...")
+    df_yellow = dd.read_parquet(yellow_files, engine='pyarrow')
+    df_yellow = standardize_columns(df_yellow, 'yellow')
+    dfs.append(df_yellow)
+    print(f"  → Yellow: {df_yellow.npartitions} partitions")
+
+if fhvhv_files:
+    print("Loading FHVHV (Uber/Lyft) data...")
+    df_fhvhv = dd.read_parquet(fhvhv_files, engine='pyarrow')
+    df_fhvhv = standardize_columns(df_fhvhv, 'fhvhv')
+    dfs.append(df_fhvhv)
+    print(f"  → FHVHV: {df_fhvhv.npartitions} partitions")
+
+# Combine all data sources
+if len(dfs) > 1:
+    df_raw_combined = dd.concat(dfs, interleave_partitions=True)
+elif len(dfs) == 1:
+    df_raw_combined = dfs[0]
+else:
+    raise ValueError("No parquet files found in the data directory!")
+
+print(f"\nCombined DataFrame: {df_raw_combined.npartitions} partitions")
 print("No data loaded into RAM yet - operations will execute on-demand.")
 
 # ============================================================================
 # STEP 1: TIME BINNING & AGGREGATIONS (Still Lazy!)
 # ============================================================================
-BIN_SIZE = '15T'  # 15-minute bins
+BIN_SIZE = '15min'  # 15-minute bins
 
 print("\n[1/6] Creating time bins...")
 # Create the Time_Bin column by rounding the pickup time down
-df_raw_combined['Time_Bin'] = df_raw_combined['tpep_pickup_datetime'].dt.floor(BIN_SIZE)
+# (using standardized column name 'pickup_datetime')
+df_raw_combined['Time_Bin'] = df_raw_combined['pickup_datetime'].dt.floor(BIN_SIZE)
 
 print("[2/6] Computing demand aggregation (lazy)...")
 # Calculate demand (active requests) - trips originating in a zone
@@ -130,10 +164,6 @@ df_aggregate = dd.read_parquet(
 # ============================================================================
 print("\n[6/6] Creating time-series features (lags, shifts, velocity)...")
 
-# Sort by Zone and Time_Bin for proper time-series operations
-# Set index for efficient time-series operations
-df_aggregate = df_aggregate.set_index('Time_Bin').persist()
-
 # For time-series operations like shift, we need to use map_partitions
 # with a custom function that ensures proper grouping within partitions
 def create_time_series_features(df):
@@ -162,10 +192,9 @@ def create_time_series_features(df):
 # CRITICAL: For shift operations to work correctly across partitions,
 # we need to repartition by Zone to ensure each zone's data stays together
 print("Repartitioning by Zone for time-series operations...")
-df_aggregate = df_aggregate.reset_index()
 
 # Repartition by Zone (this ensures all time-series for a zone are in same partition)
-df_aggregate = df_aggregate.set_index('Zone', sorted=True)
+df_aggregate = df_aggregate.set_index('Zone')
 
 # Apply the time-series feature function with map_partitions
 print("Applying time-series transformations...")
@@ -173,7 +202,6 @@ df_aggregate = df_aggregate.map_partitions(
     create_time_series_features,
     meta={
         'Time_Bin': 'datetime64[ns]',
-        'Zone': 'int64',
         'ActiveRequests': 'float64',
         'AvailableDriversProxy': 'float64',
         'SupplyElasticity': 'float64',
@@ -186,6 +214,7 @@ df_aggregate = df_aggregate.map_partitions(
     }
 )
 
+# Reset index to make Zone a regular column again
 df_aggregate = df_aggregate.reset_index()
 
 # ============================================================================
@@ -195,8 +224,8 @@ print("\n" + "=" * 60)
 print("SPLITTING DATA AND WRITING TO DISK...")
 print("=" * 60)
 
-# Define the split date
-SPLIT_DATE = pd.to_datetime('2024-11-01')
+# Define the split date (data is from Jan-Mar 2025, so split at Feb 15)
+SPLIT_DATE = pd.to_datetime('2025-02-15')
 
 # Separate the data using Dask filtering
 df_train = df_aggregate[df_aggregate['Time_Bin'] < SPLIT_DATE]
