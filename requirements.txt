@@ -1,4 +1,16 @@
-pandas
-numpy
-pyarrow 
 fastparquet
+# Dask and parallel computing dependencies
+dask[complete]==2024.1.0
+distributed==2024.1.0
+
+# Data processing
+pandas>=2.0.0
+numpy>=1.24.0
+pyarrow>=14.0.0
+
+# Progress visualization
+tqdm>=4.65.0
+
+# Optional: for distributed computing across multiple machines
+# dask-jobqueue==0.8.2  # For HPC clusters
+# dask-kubernetes==2024.1.0  # For Kubernetes deployments
